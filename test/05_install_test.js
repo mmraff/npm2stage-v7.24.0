@@ -6,7 +6,7 @@ const tap = require('tap')
 const mockFS = require('./lib/mock-fs')
 
 const constants = require('../lib/constants')
-// Made it immutable, so now we must do backflips to modify it for testing:
+// Made it immutable, so now we must hack it for testing:
 const mockConstants = {
   targets: {
     CHANGED_FILES: [ ...constants.targets.CHANGED_FILES ],
@@ -117,18 +117,28 @@ const msgPatterns = [
   /^Backing up files to be replaced:/,
   /^Copying into target directory:/   // just before chdir(src)
 ]
+msgPatterns.splice(3, 0, ...TGTS.CHANGED_FILES.map(f => f + '.js'))
+
 function expectStandardMessages(t, msgList, size) {
-  t.ok(msgList.length >= size)
-  for (let i = 0; i < size; ++i)
-    t.match(msgList[i], msgPatterns[i])
+  if (msgList.length < size)
+    return t.fail('Emitter gave less messages than expected')
+  for (let i = 0; i < size; ++i) {
+    if (!msgList[i].match(msgPatterns[i] || null))
+      return t.fail(
+        `Expected message #${i+1} was not found: ${msgPatterns[i]}`
+      )
+  }
 }
 function expectNoTestLeftovers(t, libPath) {
   for (const name of TGTS.CHANGED_FILES) {
-    t.equal(mockFS.hasPath(path.join(libPath, name + '.js')), true)
-    t.equal(mockFS.hasPath(path.join(libPath, name + BAKFLAG + '.js')), false)
+    if (!mockFS.hasPath(path.join(libPath, name + '.js')))
+      return t.fail('An expected original file was not found')
+    if (mockFS.hasPath(path.join(libPath, name + BAKFLAG + '.js')))
+      return t.fail('An unexpected backup file was found')
   }
   for (const name of TGTS.ADDED_FILES) {
-    t.equal(mockFS.hasPath(path.join(libPath, name + '.js')), false)
+    if (mockFS.hasPath(path.join(libPath, name + '.js')))
+      return t.fail('An unexpected npm-two-stage file was found')
   }
 }
 
@@ -384,8 +394,9 @@ tap.test('explicit target location is missing a required file', t1 => {
     'expect a file we want to back up, after the 1st, to be missing'
   )
   .then(() => {
-    expectStandardMessages(t1, messages, 3)
-    t1.ok(messages[3].match('Error while renaming files; restoring original names...'))
+    const wantedMsgCount = 3 + TGTS.CHANGED_FILES.length
+    expectStandardMessages(t1, messages, wantedMsgCount)
+    t1.ok(messages[6].match('Error while renaming files; restoring original names...'))
     t1.equal(mockFS.hasPath(path.join(libPath, `${firstFile}${BAKFLAG}.js`)), false)
     t1.equal(mockFS.hasPath(path.join(libPath, firstFile + '.js')), true)
     t1.equal(mockFS.cwd(), startDir)
@@ -419,9 +430,11 @@ tap.test('explicit target location good, but project src bad', t1 => {
     'expect to fail on chdir to nonexistent project src directory'
   )
   .then(() => {
-    expectStandardMessages(t1, messages, 4)
+    const wantedMsgCount = 3 + TGTS.CHANGED_FILES.length + 1
+    expectStandardMessages(t1, messages, wantedMsgCount)
     expectNoTestLeftovers(t1, libPath)
     t1.equal(mockFS.cwd(), startDir)
+    messages.splice(0, messages.length)
 
     const firstChangedFile = path.normalize(TGTS.CHANGED_FILES[0]) + '.js'
     mockFS.addPath(srcPath, 'dir')
@@ -432,7 +445,8 @@ tap.test('explicit target location good, but project src bad', t1 => {
     )
   })
   .then(() => {
-    expectStandardMessages(t1, messages, 4)
+    const wantedMsgCount = 3 + TGTS.CHANGED_FILES.length + 1
+    expectStandardMessages(t1, messages, wantedMsgCount)
     expectNoTestLeftovers(t1, libPath)
     t1.equal(mockFS.cwd(), startDir)
   })
@@ -481,4 +495,3 @@ tap.test('explicit target location, no problems', t1 => {
     t1.end()
   })
 })
-

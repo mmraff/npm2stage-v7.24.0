@@ -5,7 +5,10 @@ const tap = require('tap')
 
 const mockFS = require('./lib/mock-fs')
 
-const { errorCodes: ERRS } = require('../lib/constants')
+const {
+  targets: TGTS,
+  errorCodes: ERRS
+} = require('../lib/constants')
 
 // Mock, not trying to be correct, just plausible:
 const globalNpmRoot = process.platform == 'win32' ?
@@ -72,13 +75,23 @@ const messages = []
 const msgPatterns = [
   /^Checking npm version/,
   /^Target npm home is/,
-  /^Removing items added by npm-two-stage install\.\.\./,
-  /^Restoring backed-up original files\.\.\./
+  /^Removing items added by npm-two-stage install:/,
+  /^Restoring backed-up original files:/
 ]
+const toRemove =
+  TGTS.CHANGED_FILES.concat(TGTS.ADDED_FILES).map(f => f + '.js')
+  .concat(TGTS.ADDED_DIRS.map(d => d + '/'))
+msgPatterns.splice(3, 0, ...toRemove)
+
 function expectStandardMessages(t, msgList, size) {
-  t.ok(msgList.length >= size)
-  for (let i = 0; i < size; ++i)
-    t.match(msgList[i], msgPatterns[i])
+  if (msgList.length < size)
+    return t.fail('Emitter gave less messages than expected')
+  for (let i = 0; i < size; ++i) {
+    if (!msgList[i].match(msgPatterns[i] || null))
+      return t.fail(
+        `Expected message #${i+1} was not found: ${msgPatterns[i]}`
+      )
+  }
 }
 
 tap.before(() => {
@@ -234,7 +247,9 @@ tap.test('explicit target location, failure to remove added files', t1 => {
     uninstaller.uninstall(dummyPath), { exitcode: ERRS.FS_ACTION_FAIL }
   )
   .then(() => {
-    expectStandardMessages(t1, messages, 3)
+    const wantedMsgCount =
+      4 + TGTS.ADDED_FILES.length + TGTS.ADDED_DIRS.length
+    expectStandardMessages(t1, messages, 9)
     t1.equal(mockFS.cwd(), startDir)
   })
   .finally(() => {
@@ -253,7 +268,10 @@ tap.test('explicit target location, failure to restore backups', t1 => {
     uninstaller.uninstall(dummyPath), { exitcode: ERRS.FS_ACTION_FAIL }
   )
   .then(() => {
-    expectStandardMessages(t1, messages, 4)
+    const wantedMsgCount =
+      4 + TGTS.ADDED_FILES.length + TGTS.ADDED_DIRS.length
+      + TGTS.CHANGED_FILES.length
+    expectStandardMessages(t1, messages, wantedMsgCount)
     t1.equal(mockFS.cwd(), startDir)
   })
   .finally(() => {
@@ -269,12 +287,15 @@ tap.test('explicit target location, no problems', t1 => {
   mockFS.addPath(resolvedLib)
   t1.resolves(uninstaller.uninstall(dummyPath), 'success case')
   .then(() => {
-    expectStandardMessages(t1, messages, 4)
+    const wantedMsgCount =
+      4 + TGTS.ADDED_FILES.length + TGTS.ADDED_DIRS.length
+      + TGTS.CHANGED_FILES.length
+    expectStandardMessages(t1, messages, wantedMsgCount)
     t1.equal(mockFS.cwd(), startDir)
 
     // The uninstall actions are all done by functions of shared.js that are
     // entirely mocked here, so there are no mockFS artifacts to look for,
-    // unlike in lib_install_test.js.
+    // unlike in the install test.
   })
   .finally(() => {
     t1.end()

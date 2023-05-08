@@ -317,7 +317,7 @@ tap.test('install command, anomalous cases', t1 => {
       {
         code: ERRS.BAD_NPM_INST,
         stdout: new RegExp([
-          '   Backing up files to be replaced: [^\\n]+',
+          '   Backing up files to be replaced:[\\s\\SS]+',
           '   Error while renaming files; restoring original names...',
           '   ' + expectedErrMsg
         ].join('\n')),
@@ -406,10 +406,10 @@ tap.test('uninstall command, anomalous cases', t1 => {
       {
         code: ERRS.FS_ACTION_FAIL,
         stdout: new RegExp([
-          '   Removing items added by npm-two-stage install[.]{3}',
+          '   Removing items added by npm-two-stage install:[\\s\\S]+',
           '   Could not find file [^ ]+ for removal',
           '[\\s\\S]+',
-          '   Restoring backed-up original files...',
+          '   Restoring backed-up original files:[\\s\\S]+',
           '   Unable to restore '
         ].join('\n')),
         stderr: /ENOENT: no such file or directory, rename /
@@ -428,9 +428,10 @@ const STATUS_NOT_INST = `
    npm-two-stage is not installed at this location.`
 
 const RE_INSTALL_GOOD = new RegExp(`
-   Backing up files to be replaced: [^\\n]+
-   Copying into target directory: [^\\n]+
-
+   Backing up files to be replaced:
+   [\\s\\S]+
+   Copying into target directory:
+   [\\s\\S]+
    Installation of npm-two-stage was successful.`)
 
 const STATUS_INSTALLED = `
@@ -439,11 +440,13 @@ const STATUS_INSTALLED = `
    All expected new files present.
    npm-two-stage is fully installed at this location.`
 
-const UNINSTALL_GOOD = `
-   Removing items added by npm-two-stage install...
-   Restoring backed-up original files...
+const RE_UNINSTALL_GOOD = new RegExp(`
+   Removing items added by npm-two-stage install:
+   [\\s\\S]+
+   Restoring backed-up original files:
+   [\\s\\S]+
 
-   Removal of npm-two-stage was successful.`
+   Removal of npm-two-stage was successful.`)
 
 tap.test('normal command sequence', t1 => {
   t1.test('status command, target is untouched npm', t2 =>
@@ -517,7 +520,7 @@ tap.test('normal command sequence', t1 => {
   t1.test('uninstall command, existing npm-two-stage installation', t2 =>
     runCLI([ 'uninstall', assets.npmDir ])
     .then(({ stdout, stderr }) => {
-      t2.ok(stdout.includes(UNINSTALL_GOOD), 'should report success')
+      t2.match(stdout, RE_UNINSTALL_GOOD, 'should report success')
       t2.equal(stderr, '')
       return getEntryStates(assets.npmLibDir).then(states => {
         for (const f in states) {
